@@ -30,3 +30,17 @@ feature_size = 100
 # GURO+INBREAST
 mean = [0.51508365254458033, 0.51508365254458033, 0.51508365254458033]
 std = [0.12719534902225299, 0.12719534902225299, 0.12719534902225299]
+
+#Transformation parameters
+
+T = { 
+	"rotation_range"  : 180,
+	"shift_range"     : [0,0],
+	"shear_range"     : 0,
+	"zoom_range"      : [1,1],
+	"horizontal_flip" : False,
+	"vertical_flip"   : False,
+	"x_fill_mode"     : "constant",
+	"y_fill_mode"     : "nearest",
+	"fill_value"      : 0
+}

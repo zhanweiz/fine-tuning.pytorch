@@ -45,22 +45,11 @@ args = parser.parse_args()
 # Phase 1 : Data Upload
 print('\n[Phase 1] : Data Preperation')
 
-T = { 
-	"rotation_range"  : 180,
-	"shift_range"     : [0,0],
-	"shear_range"     : 0,
-	"zoom_range"      : [1,1],
-	"horizontal_flip" : False,
-	"vertical_flip"   : False,
-	"x_fill_mode"     : "constant",
-	"y_fill_mode"     : "nearest",
-	"fill_value"      : 0
-}
 
 data_transforms = {
     'train': transforms.Compose([
         transforms.RandomSizedCrop(224),
-	transforms.Lambda(lambda x: random_transform_fn(x, T)),
+	transforms.Lambda(lambda x: random_transform_fn(x, cf.T)),
         # transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(cf.mean, cf.std)
