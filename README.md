@@ -1,3 +1,9 @@
+# Change log
+
+- Added random rotation to transformation. Please see main.py
+- Changes to config.py.
+- Added resume flag in config.py (currently GPU models can only be restored to GPU model)
+
 # Fine-Tuning
 Pytorch implementation of Fine-Tuning (Transfer Learning) CNN Networks.
 
