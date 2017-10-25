@@ -37,13 +37,13 @@ parser.add_argument('--depth', default=50, type=int, help='depth of model')
 parser.add_argument('--finetune', '-f', action='store_true', help='Fine tune pretrained model')
 parser.add_argument('--addlayer','-a',action='store_true', help='Add additional layer in fine-tuning')
 parser.add_argument('--testOnly', '-t', action='store_true', help='Test mode with the saved model')
+parser.add_argument('--split', default='test', type=str,help='which split to give feature vector')
 args = parser.parse_args()
 
 # Phase 1 : Data Upload
 print('\n[Phase 1] : Data Preperation')
 
-data_dir = cf.test_dir
-trainset_dir = cf.data_base.split("/")[-1] + os.sep
+data_dir = os.path.join(cf.data_base,args.split)
 print("| Preparing %s dataset..." %(cf.test_dir.split("/")[-1]))
 
 use_gpu = torch.cuda.is_available()
@@ -69,9 +69,9 @@ def softmax(x):
 
 print("| Loading checkpoint model for feature extraction...")
 assert os.path.isdir('checkpoint'), 'Error: No checkpoint directory found!'
-assert os.path.isdir('checkpoint/'+trainset_dir), 'Error: No model has been trained on the dataset!'
+assert os.path.isdir('checkpoint/'+cf.name), 'Error: No model has been trained on the dataset!'
 _, file_name = getNetwork(args)
-checkpoint = torch.load('./checkpoint/'+trainset_dir+file_name+'.t7')
+checkpoint = torch.load(os.path.join('./checkpoint/',cf.name, file_name+'.t7'))
 model = checkpoint['model']
 
 print("| Consisting a feature extractor from the model...")
@@ -81,7 +81,7 @@ if(args.net_type == 'alexnet' or args.net_type == 'vggnet'):
     new_classifier = nn.Sequential(*feature_map)
     extractor = copy.deepcopy(checkpoint['model'])
     extractor.module.classifier = new_classifier
-elif (args.net_type) == 'resnet'):
+elif (args.net_type == 'resnet'):
     feature_map = list(model.module.children())
     feature_map.pop()
     extractor = nn.Sequential(*feature_map)

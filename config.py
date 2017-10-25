@@ -3,16 +3,19 @@
 # Base directory for data formats
 #name = 'GURO_CELL'
 #name = 'INBREAST'
-name = 'FINAL_TRAIN_NEW_AUG'
+name = 'pretraining_rot_n'
+#name = 'pretraining_rot'
+data_name = 'pretraining'
+resume = True
 
-data_base = '/home/mnt/datasets/'+name
-aug_base = '/home/bumsoo/Data/split/'+name
-test_dir = '/home/bumsoo/Data/test/FINAL_TEST'
+data_base = '/home/cnnserver2/healthy_data/'+data_name
+aug_base = '/home/cnnserver2/healthy_data/'+data_name
+test_dir = '/home/cnnserver2/healthy_data/'+data_name+'/test/'
 
 # model option
-batch_size = 16
-num_epochs = 50
-lr_decay_epoch=10
+batch_size = 64
+num_epochs = 400
+lr_decay_epoch=50
 feature_size = 100
 
 # meanstd options

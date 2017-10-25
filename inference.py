@@ -70,7 +70,7 @@ print("| Loading checkpoint model for inference phase...")
 assert os.path.isdir('checkpoint'), 'Error: No checkpoint directory found!'
 assert os.path.isdir('checkpoint/'+trainset_dir), 'Error: No model has been trained on the dataset!'
 _, file_name = getNetwork(args)
-checkpoint = torch.load('./checkpoint/'+trainset_dir+file_name+'.t7')
+checkpoint = torch.load('./checkpoint/'+cf.name+'/'+file_name+'.t7')
 model = checkpoint['model']
 
 if use_gpu:
@@ -95,9 +95,9 @@ test_transform = transforms.Compose([
     transforms.Normalize(cf.mean, cf.std)
 ])
 
-output_file = "result_"+cf.test_dir.split("/")[-1]+".csv"
+output_file = "result_"+cf.name+".csv"
 
-with open(output_file, 'wb') as csvfile:
+with open(output_file, 'w') as csvfile:
     fields = ['file_name', 'score']
     writer = csv.DictWriter(csvfile, fieldnames=fields)
     for subdir, dirs, files in os.walk(data_dir):
@@ -117,5 +117,5 @@ with open(output_file, 'wb') as csvfile:
                 softmax_res = softmax(outputs.data.cpu().numpy()[0])
                 score = softmax_res[1]
 
-                print(file_path + "," + str(score))
+                # print(file_path + "," + str(score))
                 writer.writerow({'file_name': file_path, 'score':score})

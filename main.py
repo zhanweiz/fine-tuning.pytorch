@@ -23,10 +23,13 @@ import copy
 import os
 import sys
 import argparse
+import scipy.ndimage as ndi
 
 from torchvision import datasets, models, transforms
 from networks import *
 from torch.autograd import Variable
+from transform_helper import random_transform_fn
+
 
 parser = argparse.ArgumentParser(description='PyTorch Digital Mammography Training')
 parser.add_argument('--lr', default=1e-3, type=float, help='learning rate')
@@ -42,10 +45,23 @@ args = parser.parse_args()
 # Phase 1 : Data Upload
 print('\n[Phase 1] : Data Preperation')
 
+T = { 
+	"rotation_range"  : 180,
+	"shift_range"     : [0,0],
+	"shear_range"     : 0,
+	"zoom_range"      : [1,1],
+	"horizontal_flip" : False,
+	"vertical_flip"   : False,
+	"x_fill_mode"     : "constant",
+	"y_fill_mode"     : "nearest",
+	"fill_value"      : 0
+}
+
 data_transforms = {
     'train': transforms.Compose([
         transforms.RandomSizedCrop(224),
-        transforms.RandomHorizontalFlip(),
+	transforms.Lambda(lambda x: random_transform_fn(x, T)),
+        # transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(cf.mean, cf.std)
     ]),
@@ -116,7 +132,7 @@ if (args.testOnly):
 
     if use_gpu:
         model.cuda()
-        # model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
+        model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
         # cudnn.benchmark = True
 
     model.eval()
@@ -224,7 +240,7 @@ def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=cf.num_epo
                     }
                     if not os.path.isdir('checkpoint'):
                         os.mkdir('checkpoint')
-                    save_point = './checkpoint/'+dataset_dir
+                    save_point = './checkpoint/'+cf.name+'/'
                     if not os.path.isdir(save_point):
                         os.mkdir(save_point)
                     torch.save(state, save_point+file_name+'.t7')
@@ -236,7 +252,7 @@ def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=cf.num_epo
     return best_model
 
 def exp_lr_scheduler(optimizer, epoch, init_lr=args.lr, weight_decay=args.weight_decay, lr_decay_epoch=10):
-    lr = init_lr * (0.5**(epoch // lr_decay_epoch))
+    lr = init_lr * (0.5**(epoch // cf.lr_decay_epoch))
 
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
@@ -245,6 +261,7 @@ def exp_lr_scheduler(optimizer, epoch, init_lr=args.lr, weight_decay=args.weight
     return optimizer, lr
 
 model_ft, file_name = getNetwork(args)
+
 
 if(args.resetClassifier):
     print('| Reset final classifier...')
@@ -272,6 +289,10 @@ if use_gpu:
     model_ft = model_ft.cuda()
     model_ft = torch.nn.DataParallel(model_ft, device_ids=range(torch.cuda.device_count()))
     cudnn.benchmark = True
+
+if cf.resume:
+    checkpoint = torch.load(os.path.join('./checkpoint/',cf.name,file_name+'.t7'))
+    model_ft.load_state_dict(checkpoint['model'].state_dict())
 
 if __name__ == "__main__":
     criterion = nn.CrossEntropyLoss()
