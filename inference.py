@@ -88,8 +88,9 @@ print("\n[Phase 3] : Score Inference")
 def is_image(f):
     return f.endswith(".png") or f.endswith(".jpg")
 
-test_transform = transforms.Compose([
-    transforms.Scale(256),
+top_transform = [transforms.Scale(224)] if cf.scale_or_crop == 'scale' else [transforms.Scale(256), transforms.CenterCrop(224)]
+test_transform = transforms.Compose(
+    top_transform + [
     transforms.CenterCrop(224),
     transforms.ToTensor(),
     transforms.Normalize(cf.mean, cf.std)

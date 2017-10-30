@@ -45,18 +45,19 @@ args = parser.parse_args()
 # Phase 1 : Data Upload
 print('\n[Phase 1] : Data Preperation')
 
+top_transform_train = [transforms.Scale(224)] if cf.scale_or_crop == 'scale' else [transforms.RandomSizedCrop(224)]
+top_transform_val = [transforms.Scale(224)] if cf.scale_or_crop == 'scale' else [transforms.Scale(256), transforms.CenterCrop(224)]
 
 data_transforms = {
-    'train': transforms.Compose([
-        transforms.RandomSizedCrop(224),
+    'train': transforms.Compose(
+        top_transform_train + [
 	transforms.Lambda(lambda x: random_transform_fn(x, cf.T)),
-        # transforms.RandomHorizontalFlip(),
+        transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(cf.mean, cf.std)
     ]),
-    'val': transforms.Compose([
-        transforms.Scale(256),
-        transforms.CenterCrop(224),
+    'val': transforms.Compose(
+        top_transform_val + [
         transforms.ToTensor(),
         transforms.Normalize(cf.mean, cf.std)
     ]),
@@ -162,7 +163,7 @@ def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=cf.num_epo
     global dataset_dir
     since = time.time()
 
-    best_model, best_acc = model, 0.0
+    best_model, best_loss = model, 10000.0
 
     print('\n[Phase 3] : Training Model')
     print('| Training Epochs = %d' %num_epochs)
@@ -218,9 +219,9 @@ def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=cf.num_epo
                 print('\n| Validation Epoch #%d\t\t\tLoss %.4f\tAcc %.2f%%'
                     %(epoch+1, loss.data[0], 100.*epoch_acc))
 
-                if epoch_acc > best_acc:
+                if epoch_loss < best_loss:
                     print('| Saving Best model...\t\t\tTop1 %.2f%%' %(100.*epoch_acc))
-                    best_acc = epoch_acc
+                    best_loss = epoch_loss
                     best_model = copy.deepcopy(model)
                     state = {
                         'model': best_model,
@@ -250,6 +251,14 @@ def exp_lr_scheduler(optimizer, epoch, init_lr=args.lr, weight_decay=args.weight
     return optimizer, lr
 
 model_ft, file_name = getNetwork(args)
+
+# discard last layer
+model_ft.fc = torch.nn.Linear(2048,len(dset_classes))
+ignored_params_id = list(map(id, model_ft.fc.parameters()))
+base_params = filter(lambda p: id(p) not in ignored_params_id,
+	model_ft.parameters())
+fc_params = filter(lambda p: id(p) in ignored_params_id,
+	model_ft.parameters())
 
 
 if(args.resetClassifier):
@@ -283,7 +292,21 @@ if cf.resume:
     checkpoint = torch.load(os.path.join('./checkpoint/',cf.name,file_name+'.t7'))
     model_ft.load_state_dict(checkpoint['model'].state_dict())
 
+
 if __name__ == "__main__":
-    criterion = nn.CrossEntropyLoss()
-    optimizer_ft = optim.SGD(model_ft.parameters(), lr=args.lr, momentum=0.9, weight_decay=args.weight_decay)
+    if cf.class_weight is None:
+        criterion = nn.CrossEntropyLoss()
+    else:
+        if use_gpu:
+            weight = torch.cuda.FloatTensor(cf.class_weight)
+        else:
+            weight = torch.FloatTensor(cf.class_weight)
+        criterion = nn.CrossEntropyLoss(weight=weight)
+
+    optimizer_ft = optim.SGD([
+	{'params': base_params},
+	{'params': fc_params, 'lr': args.lr}
+	], lr=args.lr*0.1, momentum=0.9, weight_decay=args.weight_decay)
+
+
     model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=cf.num_epochs)
