@@ -52,7 +52,7 @@ data_transforms = {
     'train': transforms.Compose(
         top_transform_train + [
 	transforms.Lambda(lambda x: random_transform_fn(x, cf.T)),
-        transforms.RandomHorizontalFlip(),
+        # transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(cf.mean, cf.std)
     ]),
@@ -163,7 +163,7 @@ def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=cf.num_epo
     global dataset_dir
     since = time.time()
 
-    best_model, best_loss = model, 10000.0
+    best_model, best_acc  = model, 0
 
     print('\n[Phase 3] : Training Model')
     print('| Training Epochs = %d' %num_epochs)
@@ -219,9 +219,9 @@ def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=cf.num_epo
                 print('\n| Validation Epoch #%d\t\t\tLoss %.4f\tAcc %.2f%%'
                     %(epoch+1, loss.data[0], 100.*epoch_acc))
 
-                if epoch_loss < best_loss:
+                if epoch_acc > best_acc:
                     print('| Saving Best model...\t\t\tTop1 %.2f%%' %(100.*epoch_acc))
-                    best_loss = epoch_loss
+                    best_acc = epoch_acc
                     best_model = copy.deepcopy(model)
                     state = {
                         'model': best_model,
@@ -253,7 +253,7 @@ def exp_lr_scheduler(optimizer, epoch, init_lr=args.lr, weight_decay=args.weight
 model_ft, file_name = getNetwork(args)
 
 # discard last layer
-model_ft.fc = torch.nn.Linear(2048,len(dset_classes))
+model_ft.fc = torch.nn.Linear(model_ft.fc.in_features,len(dset_classes))
 ignored_params_id = list(map(id, model_ft.fc.parameters()))
 base_params = filter(lambda p: id(p) not in ignored_params_id,
 	model_ft.parameters())
