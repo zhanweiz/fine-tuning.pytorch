@@ -69,13 +69,15 @@ def softmax(x):
 print("| Loading checkpoint model for inference phase...")
 assert os.path.isdir('checkpoint'), 'Error: No checkpoint directory found!'
 assert os.path.isdir('checkpoint/'+trainset_dir), 'Error: No model has been trained on the dataset!'
-_, file_name = getNetwork(args)
-checkpoint = torch.load('./checkpoint/'+cf.name+'/'+file_name+'.t7')
-model = checkpoint['model']
+model, file_name = getNetwork(args)
 
 if use_gpu:
     model.cuda()
+    model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
     cudnn.benchmark = True
+
+checkpoint = torch.load('./checkpoint/'+cf.name+'/'+file_name+'.t7')
+model.load_state_dict(checkpoint['model'].state_dict())
 
 model.eval()
 
@@ -88,12 +90,13 @@ print("\n[Phase 3] : Score Inference")
 def is_image(f):
     return f.endswith(".png") or f.endswith(".jpg")
 
-top_transform = [transforms.Scale(224)] if cf.scale_or_crop == 'scale' else [transforms.Scale(256), transforms.CenterCrop(224)]
-test_transform = transforms.Compose(
-    top_transform + [
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(cf.mean, cf.std)
+test_transform = transforms.Compose([
+        transforms.Resize(256),
+        transforms.FiveCrop((224,224)),
+        transforms.Lambda(
+        lambda crops: torch.stack([
+            transforms.Normalize(cf.mean, cf.std)
+            (transforms.ToTensor()(crop)) for crop in crops])),
 ])
 
 output_file = "result_"+cf.name+".csv"
@@ -109,14 +112,17 @@ with open(output_file, 'w') as csvfile:
                 if test_transform is not None:
                     image = test_transform(image)
                 inputs = image
+                ncrops,c,h,w = inputs.size()
+                inputs = inputs.view(-1,c,h,w)
                 inputs = Variable(inputs, volatile=True)
                 if use_gpu:
                     inputs = inputs.cuda()
-                inputs = inputs.view(1, inputs.size(0), inputs.size(1), inputs.size(2)) # add batch dim in the front
+                # inputs = inputs.view(1, inputs.size(0), inputs.size(1), inputs.size(2)) # add batch dim in the front
 
                 outputs = model(inputs)
-                softmax_res = softmax(outputs.data.cpu().numpy()[0])
-                score = softmax_res[1]
+                # outputs_avg = outputs.view(bs,ncrops,-1).mean(1)
+                softmax_res = np.apply_along_axis(softmax,1,outputs.data.cpu().numpy())
+                score = softmax_res[:,1]
 
                 # print(file_path + "," + str(score))
-                writer.writerow({'file_name': file_path, 'score':score})
+                writer.writerow({'file_name': file_path, 'score':np.array_str(score)})

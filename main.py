@@ -24,6 +24,7 @@ import os
 import sys
 import argparse
 import scipy.ndimage as ndi
+import csv
 
 from torchvision import datasets, models, transforms
 from networks import *
@@ -44,22 +45,28 @@ args = parser.parse_args()
 
 # Phase 1 : Data Upload
 print('\n[Phase 1] : Data Preperation')
-
-top_transform_train = [transforms.Scale(224)] if cf.scale_or_crop == 'scale' else [transforms.RandomSizedCrop(224)]
-top_transform_val = [transforms.Scale(224)] if cf.scale_or_crop == 'scale' else [transforms.Scale(256), transforms.CenterCrop(224)]
-
+ 
 data_transforms = {
-    'train': transforms.Compose(
-        top_transform_train + [
-	transforms.Lambda(lambda x: random_transform_fn(x, cf.T)),
-        # transforms.RandomHorizontalFlip(),
+    'train': transforms.Compose([
+        # transforms.RandomRotation(180),
+        transforms.Resize(299),
+        transforms.RandomResizedCrop(224),
+        # transforms.Lambda(lambda x: random_transform_fn(x, cf.T)),
+        transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(cf.mean, cf.std)
     ]),
-    'val': transforms.Compose(
-        top_transform_val + [
+    'val': transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
         transforms.ToTensor(),
         transforms.Normalize(cf.mean, cf.std)
+        # transforms.Resize(384),
+        # transforms.FiveCrop((224,224)),
+        # transforms.Lambda(
+        #     lambda crops: torch.stack([
+        #         transforms.Normalize(cf.mean, cf.std)
+        #         (transforms.ToTensor()(crop)) for crop in crops])),
     ]),
 }
 
@@ -116,14 +123,16 @@ def softmax(x):
 if (args.testOnly):
     print("| Loading checkpoint model for test phase...")
     assert os.path.isdir('checkpoint'), 'Error: No checkpoint directory found!'
-    _, file_name = getNetwork(args)
-    checkpoint = torch.load('./checkpoint/'+dataset_dir+'/'+file_name+'.t7')
-    model = checkpoint['model']
+    model, file_name = getNetwork(args)
+    # model.fc = torch.nn.Linear(model.fc.in_features,len(dset_classes))
 
     if use_gpu:
         model.cuda()
         model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
         # cudnn.benchmark = True
+
+    checkpoint = torch.load('./checkpoint/'+dataset_dir+'/'+file_name+'.t7')
+    model.load_state_dict(checkpoint['model'].state_dict())
 
     model.eval()
     test_loss = 0
@@ -141,17 +150,21 @@ if (args.testOnly):
 
     print("\n[Phase 3 : Inference on %s]" %cf.test_dir)
     for batch_idx, (inputs, targets) in enumerate(testloader):#dset_loaders['val']):
+        # bs,ncrops,c,h,w = inputs.size()
+        # inputs = inputs.view(-1,c,h,w)
         if use_gpu:
             inputs, targets = inputs.cuda(), targets.cuda()
         inputs, targets = Variable(inputs, volatile=True), Variable(targets)
         outputs = model(inputs)
+        # outputs_avg = outputs.view(bs,ncrops,-1).mean(1)
 
-        # print(outputs.data.cpu().numpy()[0])
         softmax_res = softmax(outputs.data.cpu().numpy()[0])
+        # softmax_res = softmax(outputs_avg.data.cpu().numpy()[0])
 
         _, predicted = torch.max(outputs.data, 1)
+        # predicted = torch.clamp(predicted.cpu().sum(0),min=0,max=1)
         total += targets.size(0)
-        correct += predicted.eq(targets.data).cpu().sum()
+        correct += predicted.eq(targets.cpu().data).sum()
 
     acc = 100.*correct/total
     print("| Test Result\tAcc@1 %.2f%%" %(acc))
@@ -164,6 +177,7 @@ def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=cf.num_epo
     since = time.time()
 
     best_model, best_acc  = model, 0
+    best_score = 0
 
     print('\n[Phase 3] : Training Model')
     print('| Training Epochs = %d' %num_epochs)
@@ -179,7 +193,7 @@ def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=cf.num_epo
                 model.train(False)
                 model.eval()
 
-            running_loss, running_corrects, tot = 0.0, 0, 0
+            running_loss, running_corrects, tot, running_tp, running_pos = 0.0, 0, 0, 0.0 ,0 
 
             for batch_idx, (inputs, labels) in enumerate(dset_loaders[phase]):
                 if use_gpu:
@@ -202,6 +216,9 @@ def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=cf.num_epo
                 # Statistics
                 running_loss += loss.data[0]
                 running_corrects += preds.eq(labels.data).cpu().sum()
+                pos_examples = labels.data.eq(1).cpu()
+                running_tp += (pos_examples * preds.eq(labels.data).cpu()).sum()
+                running_pos += pos_examples.sum()
                 tot += labels.size(0)
 
                 if (phase == 'train'):
@@ -214,26 +231,36 @@ def train_model(model, criterion, optimizer, lr_scheduler, num_epochs=cf.num_epo
 
             epoch_loss = running_loss / dset_sizes[phase]
             epoch_acc  = running_corrects / dset_sizes[phase]
+            epoch_sensitivity = running_tp / running_pos
 
             if (phase == 'val'):
-                print('\n| Validation Epoch #%d\t\t\tLoss %.4f\tAcc %.2f%%'
-                    %(epoch+1, loss.data[0], 100.*epoch_acc))
+                print('\n| Validation Epoch #%d\t\t\tLoss %.4f\tAcc %.2f%%\tSensitivity %.2f'
+                    %(epoch+1, loss.data[0], 100.*epoch_acc, epoch_sensitivity))
 
-                if epoch_acc > best_acc:
-                    print('| Saving Best model...\t\t\tTop1 %.2f%%' %(100.*epoch_acc))
-                    best_acc = epoch_acc
-                    best_model = copy.deepcopy(model)
-                    state = {
-                        'model': best_model,
-                        'acc':   epoch_acc,
-                        'epoch':epoch,
-                    }
-                    if not os.path.isdir('checkpoint'):
-                        os.mkdir('checkpoint')
-                    save_point = './checkpoint/'+cf.name+'/'
-                    if not os.path.isdir(save_point):
-                        os.mkdir(save_point)
-                    torch.save(state, save_point+file_name+'.t7')
+                # if epoch_acc > best_acc:
+                save_name = file_name
+                if epoch_sensitivity + epoch_acc > best_score:
+                    save_name = file_name + '_best'
+                    # print('| Saving Best model...\t\t\tTop1 %.2f%%' %(100.*epoch_acc))
+                    print('| Saving Best model...\t\t\tTop1 %.2f acc %.2f' % (epoch_sensitivity, epoch_acc))
+                    # best_acc = epoch_acc
+                    best_score =  epoch_sensitivity + epoch_acc
+
+                save_model = copy.deepcopy(model)
+                state = {
+                    'model': save_model,
+                    'acc':   epoch_acc,
+                    'sensitivity': epoch_sensitivity,
+                    'epoch':epoch,
+                }
+                if not os.path.isdir('checkpoint'):
+                    os.mkdir('checkpoint')
+                save_point = './checkpoint/'+cf.name+'/'
+                if not os.path.isdir(save_point):
+                    os.mkdir(save_point)
+                torch.save(state, save_point+save_name+'.t7')
+
+                
 
     time_elapsed = time.time() - since
     print('\nTraining completed in\t{:.0f} min {:.0f} sec'. format(time_elapsed // 60, time_elapsed % 60))
@@ -308,5 +335,6 @@ if __name__ == "__main__":
 	{'params': fc_params, 'lr': args.lr}
 	], lr=args.lr*0.1, momentum=0.9, weight_decay=args.weight_decay)
 
+    # optimizer_ft = optim.SGD(model_ft.parameters(), lr=args.lr, momentum=0.9, weight_decay=args.weight_decay)
 
     model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=cf.num_epochs)

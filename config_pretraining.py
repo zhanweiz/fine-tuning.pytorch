@@ -3,8 +3,10 @@
 # Base directory for data formats
 #name = 'GURO_CELL'
 #name = 'INBREAST'
-name = 'crop_rot_n'
+# name = 'amd'
+name = 'pretraining_n'
 #name = 'pretraining_rot'
+# data_name = 'amd'
 data_name = 'pretraining_n'
 resume = True
 
@@ -15,10 +17,10 @@ test_dir = '/home/cnnserver2/healthy_data/'+data_name+'/test/'
 scale_or_crop = 'crop'
 
 # model option
-batch_size = 64
-num_epochs = 400
-lr_decay_epoch=25
-feature_size = 100
+batch_size = 32
+num_epochs = 100
+lr_decay_epoch=10
+feature_size = 1003
 
 # meanstd options
 # INBREAST
@@ -30,16 +32,21 @@ feature_size = 100
 #std = [0.13613821516980551, 0.13613821516980551, 0.13613821516980551]
 
 # GURO+INBREAST
-# mean = [0.51508365254458033, 0.51508365254458033, 0.51508365254458033]
-# std = [0.12719534902225299, 0.12719534902225299, 0.12719534902225299]
+# use this for older models like pretraining_n
+mean = [0.51508365254458033, 0.51508365254458033, 0.51508365254458033]
+std = [0.12719534902225299, 0.12719534902225299, 0.12719534902225299]
 
 # t512n
-mean = [0.59959447, 0.39508969, 0.60466146] 
-std = [0.21119411, 0.23215199, 0.23345646]
+# mean = [0.59959447, 0.39508969, 0.60466146] 
+# std = [0.21119411, 0.23215199, 0.23345646]
 #Transformation parameters
 
-class_weight = [0.25,1.0]
-# class_weight = None
+# SiDRP
+# mean = [0.60009497, 0.39457625, 0.60412753]
+# std =[0.2124268, 0.23352866, 0.23597829] 
+
+# class_weight = [0.25,1.0]
+class_weight = None
 
 T = { 
 	"rotation_range"  : 180,
